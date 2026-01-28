@@ -2,10 +2,24 @@ const { Plugin } = require('obsidian');
 
 class DisableHotkeysPlugin extends Plugin {
     async onload() {
-        this.lastNoticeTime = 0;
+        this.allowContextMenuClose = false;
+        
         this.overrideCloseCommand();
         this.registerClickPrevention();
+        this.registerContextMenuHandler();
         await this.setupLeafDetachIntercept();
+    }
+    
+    registerContextMenuHandler() {
+        this.registerDomEvent(document, 'click', (evt) => {
+            const closeMenuItem = evt.target.closest('.menu-item[data-section="close"]');
+            if (closeMenuItem) {
+                this.allowContextMenuClose = true;
+                setTimeout(() => {
+                    this.allowContextMenuClose = false;
+                }, 300);
+            }
+        }, { capture: true });
     }
     
     overrideCloseCommand() {
@@ -23,7 +37,7 @@ class DisableHotkeysPlugin extends Plugin {
                     const activeLeaf = this.app.workspace.activeLeaf;
                     if (!activeLeaf) return;
                     
-                    if (this.shouldPreventClose(activeLeaf)) {
+                    if (this.shouldPreventClose(activeLeaf) && !this.allowContextMenuClose) {
                         return;
                     }
                     
@@ -43,6 +57,8 @@ class DisableHotkeysPlugin extends Plugin {
             const isInSidebar = this.isTabInSidebar(tabHeader);
             
             if (isPinned || isInSidebar) {
+                if (this.allowContextMenuClose) return;
+                
                 evt.preventDefault();
                 evt.stopPropagation();
                 evt.stopImmediatePropagation();
@@ -94,6 +110,8 @@ class DisableHotkeysPlugin extends Plugin {
     shouldPreventClose(leaf) {
         if (!leaf) return false;
         
+        if (this.allowContextMenuClose) return false;
+        
         const viewState = leaf.getViewState ? leaf.getViewState() : {};
         let isPinned = viewState.pinned;
         
@@ -134,7 +152,7 @@ class DisableHotkeysPlugin extends Plugin {
         leaf._originalDetach = leaf.detach;
         
         leaf.detach = () => {
-            if (this.shouldPreventClose(leaf)) {
+            if (this.shouldPreventClose(leaf) && !this.allowContextMenuClose) {
                 return false;
             }
             return leaf._originalDetach.call(leaf);
